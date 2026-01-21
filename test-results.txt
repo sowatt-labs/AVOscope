@@ -1,0 +1,161 @@
+
+======================================================================
+  AVO CODE VALIDATION SUITE
+  Comprehensive Testing of Zoeppritz & Shuey Implementations
+======================================================================
+  Date: 2026-01-21
+======================================================================
+
+======================================================================
+TEST 1: NORMAL INCIDENCE VALIDATION
+======================================================================
+Analytical (AI):     -0.05571848
+Zoeppritz (0°):      -0.05571848
+Shuey (0°):          -0.05575935
+Shuey Intercept:     -0.05575935
+Shuey Gradient:      0.05575935
+
+Zoeppritz Error:     2.78e-17 ✓ PASS
+Shuey Error:         4.09e-05 ✓ PASS
+Intercept Error:     4.09e-05 ✓ PASS
+
+✓ Normal incidence test PASSED
+
+======================================================================
+TEST 2: PHYSICAL CONSTRAINTS
+======================================================================
+
+1. Energy Conservation:
+   Max |R|:          0.133858 ✓ PASS
+
+2. Reciprocity:
+   Max |R₁₂ + R₂₁|:  2.39e-02 ⚠ CHECK
+
+3. Continuity:
+   Max derivative:   0.000720 ✓ PASS
+
+4. Monotonicity (Class III):
+   Decreasing trend: ⚠ CHECK
+
+✗ Physical constraints test ⚠ CHECK
+
+======================================================================
+TEST 3: SHUEY APPROXIMATION ACCURACY
+======================================================================
+
+Test case: Weak contrast
+ΔVp/Vp = 0.069
+Δρ/ρ = 0.043
+
+Angle    Zoeppritz    Shuey-2      Shuey-3      Err-2(%)     Err-3(%)
+---------------------------------------------------------------------------
+10       -0.054068    -0.054078    -0.054110    0.02         0.08
+20       -0.049685    -0.049237    -0.049771    0.90         0.17
+30       -0.044351    -0.041820    -0.044693    5.71         0.77
+40       -0.041399    -0.032721    -0.042752    20.96        3.27
+
+Accuracy at 30°:
+   2-term error:     5.71% ✓ PASS (<6%)
+   3-term error:     0.77% ✓ PASS (<2%)
+
+✓ Shuey accuracy test PASSED
+
+======================================================================
+TEST 4: LITERATURE BENCHMARK CASES
+======================================================================
+
+--- Case 1: Gas Sand (Castagna & Backus 1993) ---
+  R(0°):            -0.2601
+  R(15°):           -0.2686
+  R(30°):           -0.2967
+  Intercept:        -0.2642
+  Gradient:         -0.1751
+  Classification:   Class III
+  Expected:         Class III (negative I, increasingly negative)
+  Status:           ✓ PASS
+
+--- Case 2: Bright Spot (High Impedance Contrast) ---
+  R(0°):            0.2281
+  R(30°):           0.1828
+  Intercept:        0.2305
+  Gradient:         -0.2972
+  Classification:   Class I
+  Expected:         Class I (positive I, negative G)
+  Status:           ✓ PASS
+
+--- Case 3: Class IV (High Poisson Contrast) ---
+  R(0°):            -0.0855
+  Intercept:        -0.0856
+  Gradient:         0.1837
+  Classification:   Class IV
+  Expected:         Class IV (negative I, positive G)
+  Status:           ✓ PASS
+
+✓ Literature benchmarks test PASSED
+
+======================================================================
+TEST 5: AVO CLASSIFICATION BOUNDARIES
+======================================================================
+
+I        G        Expected        Got                  Status
+----------------------------------------------------------------------
+0.10     -0.05    Class I         Class I              ✓ PASS
+0.08     -0.02    Class I         Class I              ✓ PASS
+0.02     -0.03    Class IIp       Class IIp            ✓ PASS
+0.00     0.00     Class II        Class II             ✓ PASS
+0.01     0.02     Class II        Class II             ✓ PASS
+-0.08    -0.06    Class III       Class III            ✓ PASS
+-0.15    -0.10    Class III       Class III            ✓ PASS
+-0.10    0.05     Class IV        Class IV             ✓ PASS
+-0.08    0.08     Class IV        Class IV             ✓ PASS
+
+✓ AVO classification test PASSED
+
+======================================================================
+TEST 6: CRITICAL ANGLE HANDLING
+======================================================================
+
+Critical angle (Vp): 41.81°
+
+Testing angles: [36.8103149 40.8103149 41.8103149 42.8103149 46.8103149]
+
+Results:
+  Contains NaN:      False ✓ PASS
+  Contains Inf:      False ✓ PASS
+  Contains Complex:  False ✓ PASS
+  All |R| ≤ 1:       True ✓ PASS
+
+Reflection coefficients:
+   36.81°:  -0.18951
+   40.81°:  -0.18234
+   41.81°:  -0.18103
+   42.81°:  -0.17996
+   46.81°:  -0.17838
+
+✓ Critical angle test PASSED
+
+======================================================================
+TEST 7: VISUAL VALIDATION
+======================================================================
+
+✓ Validation plot saved: avo_validation_plot.png
+
+======================================================================
+VALIDATION SUMMARY REPORT
+======================================================================
+  Normal Incidence               ✓ PASS
+  Physical Constraints           ✗ FAIL
+  Shuey Accuracy                 ✓ PASS
+  Literature Benchmarks          ✓ PASS
+  AVO Classification             ✓ PASS
+  Critical Angles                ✓ PASS
+  Visual Validation              ✓ PASS
+======================================================================
+  OVERALL SCORE: 6/7 tests passed (85.7%)
+======================================================================
+
+⚠ MOSTLY PASSED (≥80%)
+   Some tests failed - review errors above for improvements.
+======================================================================
+
+⚠ Validation complete - see errors above.
