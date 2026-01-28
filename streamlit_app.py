@@ -191,7 +191,7 @@ ERROR_PRESETS = {
 # STREAMLIT APP
 # =========================================================
 
-st.set_page_config(page_title="AVOscope", page_icon="AVO", layout="wide")
+st.set_page_config(page_title="AVOscope", page_icon="AVO", layout="centered")
 
 # ---- Header ----
 st.title("AVOscope — Elastic AVO & Reflectivity Explorer")
@@ -633,4 +633,5 @@ with st.expander("Error analysis"):
         "- As contrast strengthens and angle increases, the 3-term Shuey "
         "usually tracks Zoeppritz better than the 2-term."
     )
+
 
