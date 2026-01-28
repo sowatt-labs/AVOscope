@@ -120,28 +120,51 @@ def classify_avo_class(intercept, gradient):
     else:
         return "Class III" if gradient < 0 else "Class IV"
 
-def generate_synthetic_gather(vp1, vs1, rho1, vp2, vs2, rho2,
-                              max_angle=30, num_traces=20,
-                              wavelet_freq=10, polarity="normal",
-                              method="shuey"):
+
+def generate_synthetic_gather_multi(
+        vp_list, vs_list, rho_list,
+        max_angle=30, num_traces=20,
+        wavelet_freq=25, polarity="normal",
+        method="shuey"):
+
+    vp_list = np.asarray(vp_list)
+    vs_list = np.asarray(vs_list)
+    rho_list = np.asarray(rho_list)
+    n_layers = len(vp_list)
+    n_interfaces = n_layers - 1
+
     angles = np.linspace(0, max_angle, num_traces)
-    if method.startswith("shuey"):
-        I, G, avo = compute_shuey_two_term(vp1, vs1, rho1, vp2, vs2, rho2, angles)
-    else:
-        avo = compute_zoeppritz_reflection(vp1, vs1, rho1, vp2, vs2, rho2, angles)
-
-    if polarity == "reversed":
-        avo = -avo
-
     wavelet = generate_ricker_wavelet(frequency=wavelet_freq)
     n_samples = 500
-    interface_idx = n_samples // 2
     gather = np.zeros((n_samples, len(angles)))
-    for i, coeff in enumerate(avo):
-        reflection_series = np.zeros(n_samples)
-        reflection_series[interface_idx] = coeff
-        gather[:, i] = np.convolve(reflection_series, wavelet, mode="same")
-    return avo, gather, angles
+    refl_series = np.zeros((n_samples, len(angles)))
+
+    # put interface spikes at equally spaced depths
+    interface_indices = np.linspace(
+        n_samples // 3, 2 * n_samples // 3, n_interfaces, dtype=int
+    )
+
+    for k in range(n_interfaces):
+        vp1, vs1, rho1 = vp_list[k],     vs_list[k],     rho_list[k]
+        vp2, vs2, rho2 = vp_list[k + 1], vs_list[k + 1], rho_list[k + 1]
+
+        if method.startswith("shuey"):
+            _, _, avo = compute_shuey_two_term(vp1, vs1, rho1, vp2, vs2, rho2, angles)
+        else:
+            avo = compute_zoeppritz_reflection(vp1, vs1, rho1, vp2, vs2, rho2, angles)
+
+        if polarity == "reversed":
+            avo = -avo
+
+        idx = interface_indices[k]
+        for i, coeff in enumerate(avo):
+            refl_series[idx, i] += coeff
+
+    # convolve each trace with wavelet
+    for i in range(len(angles)):
+        gather[:, i] = np.convolve(refl_series[:, i], wavelet, mode="same")
+
+    return refl_series, gather, angles
 
 # =========================================================
 # RELATIVE ERROR PRESETS (AI contrast cases)
@@ -168,7 +191,7 @@ ERROR_PRESETS = {
 # STREAMLIT APP
 # =========================================================
 
-st.set_page_config(page_title="AVOscope", layout="wide")
+st.set_page_config(page_title="AVOscope", page_icon="AVO", layout="wide")
 
 # ---- Header ----
 st.title("AVOscope — Elastic AVO & Reflectivity Explorer")
@@ -192,11 +215,11 @@ preset = st.sidebar.selectbox(
 
 # Simple, illustrative preset values (tunable later)
 preset_params = {
-    "Class I":  dict(vp1=2000, vs1=1155, rho1=2.40, vp2=4000, vs2=2300, rho2=2.66),
-    "Class IIp": dict(vp1=1800, vs1=666, rho1=2.40, vp2=2400, vs2=1700, rho2=1.95),
-    "Class II":dict(vp1=3000, vs1=1500, rho1=2.35, vp2=2950, vs2=1480, rho2=2.33),
-    "Class III":dict(vp1=2200, vs1=820, rho1=2.16, vp2=1550, vs2=900, rho2=1.80),
-    "Class IV": dict(vp1=3240, vs1=1620, rho1=2.34, vp2=1650, vs2=820,  rho2=2.00),
+    "Class I":  dict(vp1=2000, vs1=1155, rho1=2.40, vp2=4000, vs2=2300, rho2=2.66, vp3=2000, vs3=1155, rho3=2.40),
+    "Class IIp": dict(vp1=1800, vs1=666, rho1=2.40, vp2=2400, vs2=1700, rho2=1.95, vp3=1800, vs3=666, rho3=2.40),
+    "Class II":dict(vp1=3000, vs1=1500, rho1=2.35, vp2=2950, vs2=1480, rho2=2.33, vp3=3000, vs3=1500, rho3=2.35),
+    "Class III":dict(vp1=2200, vs1=820, rho1=2.16, vp2=1550, vs2=900, rho2=1.80, vp3=2200, vs3=820, rho3=2.16),
+    "Class IV": dict(vp1=3240, vs1=1620, rho1=2.34, vp2=1650, vs2=820,  rho2=2.00, vp3=3240, vs3=1620, rho3=2.34),
 }
 
 if preset != "Custom":
@@ -217,13 +240,21 @@ with col1:
 with col2:
     rho1 = st.number_input("ρ₁ (g/cm³)", 1.5, 3.0, float(params["rho1"]), 0.05, disabled=lock_layers)
 
-st.sidebar.subheader("Lower layer (2)")
+st.sidebar.subheader("Middle Layer (2)")
 col3, col4 = st.sidebar.columns(2)
 with col3:
     vp2 = st.number_input("Vp₂ (m/s)", 1500, 6000, params["vp2"], 50, disabled=lock_layers)
     vs2 = st.number_input("Vs₂ (m/s)", 500, 4000, params["vs2"], 50, disabled=lock_layers)
 with col4:
     rho2 = st.number_input("ρ₂ (g/cm³)", 1.5, 3.0, float(params["rho2"]), 0.05, disabled=lock_layers)
+
+st.sidebar.subheader("Bottom Layer (3)")
+col4, col5 = st.sidebar.columns(2)
+with col4:
+    vp3 = st.number_input("Vp₃ (m/s)", 1500, 6000, params["vp1"], 50, disabled=lock_layers)
+    vs3 = st.number_input("Vs₃ (m/s)", 500, 4000, params["vs1"], 50, disabled=lock_layers)
+with col5:
+    rho3 = st.number_input("ρ₃ (g/cm³)", 1.5, 3.0, float(params["rho1"]), 0.05, disabled=lock_layers)    
 
 # ---- Sidebar: angle / method / polarity ----
 st.sidebar.subheader("Angle & method")
@@ -262,39 +293,45 @@ if crit.get("S_critical_exceeded", False) and "S_critical_deg" in crit:
             "Mode conversions are strongly affected near and beyond this angle.")
 
 # =========================================================
-# TABS
+# EXPANDER TABS
 # =========================================================
-
-tab_logs, tab_avo, tab_gather, tab_ig, tab_err = st.tabs(
-    ["Elastic logs", "AVO curve", "Synthetic gather", "I–G crossplot", "Error analysis"]
-)
 
 # ---- Common quantities ----
 Z1 = compute_impedance(vp1, rho1)
 Z2 = compute_impedance(vp2, rho2)
-ai_contrast = (Z2 - Z1) / (Z2 + Z1)
-
+Z3 = compute_impedance(vp3, rho3)  # unused, for possible extension
+ai_contrast1 = (Z2 - Z1) / (Z2 + Z1)
+ai_contrast2 = (Z3 - Z2) / (Z3 + Z2)
 # For I,G always use Shuey 2-term at θ=0
 I0, G0, _ = compute_shuey_two_term(vp1, vs1, rho1, vp2, vs2, rho2, [0])
 I_scalar = float(np.squeeze(I0))
 G_scalar = float(np.squeeze(G0))
 avo_class = classify_avo_class(I_scalar, G_scalar)
 
+I1, G1, _ = compute_shuey_two_term(vp2, vs2, rho2, vp3, vs3, rho3, [0])
+I_scalar1 = float(np.squeeze(I1))
+G_scalar1 = float(np.squeeze(G1))
+avo_class1 = classify_avo_class(I_scalar1, G_scalar1)
+
+
 # ---- Tab 1: Elastic logs ----
-with tab_logs:
+with st.expander("Elastic logs"):
     st.subheader("Elastic property logs")
 
     n_samples = 500
     z = np.linspace(0, 1, n_samples)
-    interface = n_samples // 2
+    interface1 = n_samples // 3
+    interface2 = 2 * n_samples // 3
 
     ai_log = np.concatenate([
-        np.full(interface, Z1),
-        np.full(n_samples - interface, Z2),
+        np.full(interface1, Z1),
+        np.full(interface2 - interface1, Z2),
+        np.full(n_samples - interface2, Z3),
     ])
     vpvs_log = np.concatenate([
-        np.full(interface, compute_vp_vs_ratio(vp1, vs1)),
-        np.full(n_samples - interface, compute_vp_vs_ratio(vp2, vs2)),
+        np.full(interface1, compute_vp_vs_ratio(vp1, vs1)),
+        np.full(interface2 - interface1, compute_vp_vs_ratio(vp2, vs2)),
+        np.full(n_samples - interface2, compute_vp_vs_ratio(vp3, vs3)),
     ])
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(9, 5))
@@ -318,33 +355,46 @@ with tab_logs:
     st.pyplot(fig)
 
     st.markdown(
-        f"- AI contrast (normal incidence R): **{ai_contrast:.3f}**  \n"
-        f"- Shuey intercept I₀: **{I_scalar:.3f}**, gradient G: **{G_scalar:.3f}**  \n"
-        f"- AVO class (Rutherford & Williams): **{avo_class}**"
+        f"- AI contrast (normal incidence R); Top : **{ai_contrast1:.3f}**, Base : **{ai_contrast2:.3f}**  \n"
+        f"- Shuey intercept I₀ (Top) : **{I_scalar:.3f}**, gradient G: **{G_scalar:.3f}**  \n"
+        f"- Shuey intercept I₀ (Base) : **{I_scalar1:.3f}**, gradient G: **{G_scalar1:.3f}**  \n"
+        f"- AVO class (Rutherford & Williams) Top : **{avo_class}**, \n Base : **{avo_class1}**"
     )
 
 # ---- Tab 2: AVO curve ----
-with tab_avo:
+
+with st.expander("AVO curve"):
     st.subheader("Angle-dependent reflectivity")
 
     angles_fine = np.linspace(0, effective_max_angle, 200)
-    
 
+    # compute R (top) and R1 (base) exactly as you already do
     if method_choice == "Shuey (2-term)":
-        I, G, R = compute_shuey_two_term(vp1, vs1, rho1, vp2, vs2, rho2, angles_fine)
+        I,  G,  R  = compute_shuey_two_term(vp1, vs1, rho1, vp2, vs2, rho2, angles_fine)
+        I1, G1, R1 = compute_shuey_two_term(vp2, vs2, rho2, vp3, vs3, rho3, angles_fine)
     elif method_choice == "Shuey (3-term)":
-        I, G, F, R = compute_shuey_three_term(vp1, vs1, rho1, vp2, vs2, rho2, angles_fine)
+        I,  G,  F,  R  = compute_shuey_three_term(vp1, vs1, rho1, vp2, vs2, rho2, angles_fine)
+        I1, G1, F1, R1 = compute_shuey_three_term(vp2, vs2, rho2, vp3, vs3, rho3, angles_fine)
     else:
-        R = compute_zoeppritz_reflection(vp1, vs1, rho1, vp2, vs2, rho2, angles_fine)
+        R  = compute_zoeppritz_reflection(vp1, vs1, rho1, vp2, vs2, rho2, angles_fine)
+        R1 = compute_zoeppritz_reflection(vp2, vs2, rho2, vp3, vs3, rho3, angles_fine)
 
     if polarity == "Reversed":
-        R = -R
+        R  = -R
+        R1 = -R1
 
+    show_top = st.checkbox("Show top reflection", value=True)
+    show_base = st.checkbox("Show base reflection", value=True)
 
     fig2, ax = plt.subplots(figsize=(7, 5))
-    style = "-" if method_choice == "Zoeppritz" else "--"
-    ax.plot(angles_fine, R, style, color="k", lw=2.5, label=method_choice)
     ax.axhline(0, color="gray", lw=1)
+
+    style = "-" if method_choice == "Zoeppritz" else "--"
+
+    if show_top:
+        ax.plot(angles_fine, R, style, color="k", lw=2.5, label=method_choice + " (top)")
+    if show_base:
+        ax.plot(angles_fine, R1, style, color="b", lw=2.5, label=method_choice + " (base)")
 
     if crit_p is not None:
         ax.axvline(crit_p, color="red", ls="--", alpha=0.7)
@@ -364,25 +414,35 @@ with tab_avo:
     ax.set_ylabel("Reflection coefficient")
     ax.set_title("AVO response")
     ax.grid(alpha=0.3)
-    ax.legend()
+    if show_top or show_base:
+        ax.legend()
     plt.tight_layout()
     st.pyplot(fig2)
 
+
 # ---- Tab 3: Synthetic gather ----
-with tab_gather:
+
+with st.expander("Synthetic gather"):
     st.subheader("Illustrative pre-stack synthetic gather")
-    avo_coeffs, gather, angles = generate_synthetic_gather(
-        vp1, vs1, rho1, vp2, vs2, rho2,
-        max_angle=effective_max_angle, num_traces=15,
-        method=method_choice.lower().split()[0], polarity=polarity.lower()
+
+    vp_list  = [vp1, vp2, vp3]
+    vs_list  = [vs1, vs2, vs3]
+    rho_list = [rho1, rho2, rho3]
+
+    refl_series, gather, angles = generate_synthetic_gather_multi(
+        vp_list, vs_list, rho_list,
+        max_angle=effective_max_angle, num_traces=25,
+        method=method_choice.lower().split()[0],
+        polarity=polarity.lower()
     )
 
-    fig3, axg = plt.subplots(figsize=(7, 6))
     depth = np.linspace(0, 1, gather.shape[0])
     gain = 1.5
+    avo_max = np.max(np.abs(refl_series)) or 1.0
 
+    fig3, axg = plt.subplots(figsize=(7, 6))
     for i in range(gather.shape[1]):
-        trace = gather[:, i] / np.max(np.abs(avo_coeffs)) * gain
+        trace = gather[:, i] / avo_max * gain
         x = i + trace
         axg.plot(x, depth, "k-", lw=0.5)
         axg.fill_betweenx(depth, i, x, where=(x >= i),
@@ -393,36 +453,39 @@ with tab_gather:
     axg.set_ylim(depth.max(), depth.min())
     axg.set_xlabel("Angle (°)")
     axg.set_ylabel("Depth (arb.)")
-    axg.set_title("Synthetic gather (illustrative, not amplitude-preserved)")
+    axg.set_title("Synthetic gather (two-interface, illustrative)")
     axg.set_xticks(np.linspace(0, gather.shape[1]-1, 5))
     axg.set_xticklabels([f"{a:.0f}" for a in np.linspace(0, effective_max_angle, 5)])
     axg.grid(alpha=0.2)
     plt.tight_layout()
     st.pyplot(fig3)
 
+
 # ---- Tab 4: I–G crossplot ----
-with tab_ig:
+
+with st.expander("I–G crossplot"):
     st.subheader("Intercept–gradient crossplot")
 
-    xlims, ylims = (-0.5, 0.5), (-0.5, 0.5)
+    show_top_ig = st.checkbox("Show top ", value=True)
+    show_base_ig = st.checkbox("Show base", value=True)
+
+    xlims, ylims = (-1, 1), (-1, 1)
     Ivals = np.linspace(xlims[0], xlims[1], 500)
     fluid_line = -Ivals
 
     fig4, axig = plt.subplots(figsize=(7, 7))
 
+    # background regions (unchanged)
     axig.add_patch(patches.Rectangle(
         (-0.05, ylims[0]), 0.10, ylims[1]-ylims[0],
         facecolor="cyan", alpha=0.2, edgecolor="none"
     ))
-
     axig.fill_between(Ivals[Ivals < -0.05], ylims[0], 0,
                       color="red", alpha=0.2)
-
     I_class1 = Ivals[Ivals > 0.05]
     G_fluid = -I_class1
     G_min = np.full_like(I_class1, ylims[0])
     axig.fill_between(I_class1, G_min, G_fluid, color="purple", alpha=0.2)
-
     for I_v in Ivals[Ivals < -0.05]:
         G_top = min(-I_v, ylims[1])
         if G_top > 0:
@@ -433,14 +496,28 @@ with tab_ig:
     axig.axhline(0, color="black", lw=1)
     axig.axvline(0, color="black", lw=1)
 
-    axig.plot(I_scalar, G_scalar, "o", markersize=14,
-              markerfacecolor="yellow", markeredgecolor="black",
-              markeredgewidth=2.5, zorder=10)
+    # plot top interface: solid point
+    if show_top_ig:
+        axig.plot(I_scalar, G_scalar, "o", markersize=12,
+                  markerfacecolor="yellow", markeredgecolor="black",
+                  markeredgewidth=2.0, label="Top")
 
-    info_text = f"I: {I_scalar:.4f}\nG: {G_scalar:.4f}\nClass: {avo_class}"
-    axig.text(0.02, 0.98, info_text, transform=axig.transAxes,
-              fontsize=9, va="top",
-              bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.7))
+    # plot base interface: hollow point
+    if show_base_ig:
+        axig.plot(I_scalar1, G_scalar1, "o", markersize=12,
+                  markerfacecolor="none", markeredgecolor="black",
+                  markeredgewidth=2.0, label="Base")
+
+    # label box updated to show whichever is visible
+    info_lines = []
+    if show_top_ig:
+        info_lines.append(f"Top I: {I_scalar:.4f}, G: {G_scalar:.4f}, {avo_class}")
+    if show_base_ig:
+        info_lines.append(f"Base I: {I_scalar1:.4f}, G: {G_scalar1:.4f}, {avo_class1}")
+    if info_lines:
+        axig.text(0.02, 0.98, "\n".join(info_lines), transform=axig.transAxes,
+                  fontsize=9, va="top",
+                  bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.7))
 
     axig.set_xlim(xlims)
     axig.set_ylim(ylims)
@@ -458,14 +535,18 @@ with tab_ig:
     axig.text(-0.24, 0.22, "IV", color="green", fontsize=11,
               style="italic", fontweight="bold")
 
+    if show_top_ig or show_base_ig:
+        axig.legend()
+
     plt.tight_layout()
     st.pyplot(fig4)
+
 
 # =========================================================
 # RELATIVE ERROR VS ANGLE (Zoeppritz vs Shuey)
 # =========================================================
 
-with tab_err:
+with st.expander("Error analysis"):
     st.subheader("Relative error: Zoeppritz vs Shuey (by contrast case)")
     st.markdown(
         "Select a canonical interface to see how well "
@@ -552,5 +633,4 @@ with tab_err:
         "- As contrast strengthens and angle increases, the 3-term Shuey "
         "usually tracks Zoeppritz better than the 2-term."
     )
-
 
